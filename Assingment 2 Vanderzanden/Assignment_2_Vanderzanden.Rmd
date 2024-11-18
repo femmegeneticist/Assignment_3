@@ -10,7 +10,8 @@ header-includes:
   - \usepackage{fvextra}
   - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
 ---
-
+Primary Author: Amanda Vanderzanden
+Code Editor: Dylan Harding
 ## Introduction
 
 The *Apis* genus, commonly referred to as bees, encompasses a large number of key pollinators from across the world that are involved in anywhere from 50-75% of pollination of globally significant crops (Requier et al., 2023). A decline in the bee population can have far reaching consequences in the food crop and biodiversity spheres of the global ecosystem (Arpaia et al., 2021; Bartomeus et al., 2011). An understanding of the genetic diversity and pressures on the species can allow a better understanding of their diversity and to guide conservation efforts in future developments (Ilyasov et al., 2021; Requier et al., 2023). Cytochrome oxidase I (COI) and NADH dehydrogenase subunit 1 (ND1) are two mitochondrial genes which can be utilized to understand evolutionary patterns and species diversity in the *Apis* genus (Chuang & Hsu, 2013; Ilyasov et al., 2021). COI is widely used in the study of DNA barcoding as it is highly conserved across species and ND1 acts as a similar but distinct marker which can allow differing perspectives on the genetic significance of different bee species (Chuang & Hsu, 2013; Ilyasov et al., 2021). In this investigation, I aim to identify the utility of these genes for effective cluster analysis and if sequences are more effective at higher grouping numbers.
