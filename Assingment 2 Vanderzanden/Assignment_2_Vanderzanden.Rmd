@@ -2,18 +2,23 @@
 title: "Assignment 2"
 author: "Amanda Vanderzanden"
 date: "`r Sys.Date()`"
-output: pdf_document
+output:
+  #EDIT -- I've edited the markdown file so to make
+  pdf_document:
+    keep_tex: FALSE 
+header-includes:
+  - \usepackage{fvextra}
+  - \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
 ---
 
 ## Introduction
 
 The *Apis* genus, commonly referred to as bees, encompasses a large number of key pollinators from across the world that are involved in anywhere from 50-75% of pollination of globally significant crops (Requier et al., 2023). A decline in the bee population can have far reaching consequences in the food crop and biodiversity spheres of the global ecosystem (Arpaia et al., 2021; Bartomeus et al., 2011). An understanding of the genetic diversity and pressures on the species can allow a better understanding of their diversity and to guide conservation efforts in future developments (Ilyasov et al., 2021; Requier et al., 2023). Cytochrome oxidase I (COI) and NADH dehydrogenase subunit 1 (ND1) are two mitochondrial genes which can be utilized to understand evolutionary patterns and species diversity in the *Apis* genus (Chuang & Hsu, 2013; Ilyasov et al., 2021). COI is widely used in the study of DNA barcoding as it is highly conserved across species and ND1 acts as a similar but distinct marker which can allow differing perspectives on the genetic significance of different bee species (Chuang & Hsu, 2013; Ilyasov et al., 2021). In this investigation, I aim to identify the utility of these genes for effective cluster analysis and if sequences are more effective at higher grouping numbers.
 
+```{r setup, tidy=FALSE, message=FALSE, warning=FALSE}
 ## The Code
 
 ### Library Setup
-
-``` r
 library(tidyverse)
 conflicted::conflicts_prefer(dplyr::filter())
 library(Biostrings)
@@ -30,11 +35,12 @@ library(ggplot2)
 library(ape)
 library(dendextend)
 library(cowplot)
-```
+library(rlang) #EDIT - Added by Dylan
+library(stringr) #Edit - Added by Dylan
+
 
 ### Finding the Data
 
-``` r
 #nd_search <- entrez_search(db = "nuccore", term = "Apis[ORGN] 
 #AND ND2[Gene] AND 300:800[SLEN]", retmax = 100)
 
@@ -50,49 +56,63 @@ library(cowplot)
 
 #Bee_ND_Fetch <- entrez_fetch(db = "nuccore", id = nd_search$ids, rettype = "fasta")
 #write(Bee_ND_Fetch, "Bee_ND.fasta", sep = "\n")
-```
 
-Data initially retrieved as a StringSet to be manipulated properly in downstream analysis. Dataframes for each gene are generated for later use with headings that have consistent descriptions.
+#Data initially retrieved as a StringSet to be manipulated properly in downstream analysis. Dataframes for each gene are generated for later use with headings that have consistent descriptions.
 
-``` r
 COI_StringSet <- readDNAStringSet("Bee_COI.fasta") 
 #change target for file as needed for your computer
-names(COI_StringSet) <- substr(names(COI_StringSet), 1, 10) #shorten IDS
 COI_DF <- data.frame(COI_Title = names(COI_StringSet), COI_Sequence = paste(COI_StringSet)) 
 #convert to dataframe
-COI_DF$Species_Name <- word(COI_DF$COI_Title, 2L, 3L)
+COI_DF$Species_Name <- word(COI_DF$COI_Title, 2L, 3L) #Dylan edit -- This line was previously after the next one (which shortens the COI_Title entries down to the first 10 digits, meaning when it was called it was not pulling any words and just returning NAs to the Species_Name column)
+COI_DF$COI_Title <- substr(COI_DF$COI_Title, 1, 10) #shorten IDS #Dylan edit -- As per the above edit, this shortening of the COI_Titles was happening too early, and therefore needed to be moved and adjusted
 COI_DF <- COI_DF[, c("COI_Title", "Species_Name", "COI_Sequence")] #consistent headings
 
 ND_StringSet <- readDNAStringSet("Bee_ND.fasta") 
 #change target for file as needed for your computer
-names(ND_StringSet) <- substr(names(ND_StringSet), 1, 10) #shorten IDs
 ND_DF <- data.frame(ND_Title = names(ND_StringSet), ND_Sequence = paste(ND_StringSet)) 
 #convert to dataframe
-ND_DF$Species_Name <- word(ND_DF$ND_Title, 2L, 3L)
+ND_DF$Species_Name <- word(ND_DF$ND_Title, 2L, 3L) #Dylan edit -- edited for same reason as for COI_DF above 
+ND_DF$ND_Title <- substr(ND_DF$ND_Title, 1, 10) #shorten IDs #Dylan edit -- edited for same reason as for COI_DF above
 ND_DF <- ND_DF[, c("ND_Title", "Species_Name", "ND_Sequence")] #consistent headings
-shortened_labelsND <- substr(ND_DF$ND_Title, 1, 10)
 
-sum(is.na(COI_DF$COI_Sequence))
-sum(is.na(ND_DF$ND_Sequence)) #checking for empty rows
-sum(sapply(COI_DF$COI_Sequence, function(seq) {
-     sum(as.character(seq) == "-")
- })) 
-sum(sapply(ND_DF$ND_Sequence, function(seq) {
-     sum(as.character(seq) == "-")
- })) #checking for gaps in the gathered sequences, none found for either gene
-sum(sapply(COI_DF$COI_Sequence, function(seq) {
-     sum(as.character(seq) == "N")
- }))
-sum(sapply(ND_DF$ND_Sequence, function(seq) {
-     sum(as.character(seq) == "N")
- })) #checking for Ns in the gathered sequences, none found for either gene
-```
+ND_DF$ND_Title #Dylan edit -- As this is a check, I've removed the assignment to a variable as we just need to see it in the terminal
 
-Data is now modified and verified as not having gaps or missing nucleotides for downstream analysis.
+####### Dylan edit -- ADDED FUNCTION ##########
+# Although longer than the original code in this section, this function similarly checks for NAs, gaps ("-"), and Ns, however it also filters them out and prints a few lines to understand how many sequences were removed, and how average sequence length has changed. It is also more easily reproducible for other DFs with a sequence column
 
+filter_sequences <- function(data, sequence_column) {
+  # Capture the column name dynamically using enquo()
+  sequence_col <- enquo(sequence_column)
+  starting_count <- nrow(data)
+  avg_length_before <- mean(nchar(as.character(data[[quo_name(sequence_col)]])), na.rm = TRUE)
+  N_freq <- sum(str_count(data[[quo_name(sequence_col)]], "N"))
+  gap_freq <- sum(str_count(data[[quo_name(sequence_col)]], "-"))
+  # Filter out rows with NA in the sequence column
+  data <- data |>
+    #starting_count <- length(sequence_col) %>% 
+    filter(!is.na(!!sequence_col)) |>
+    # Remove gaps ("-") from the entire sequence
+    mutate(!!sequence_col := str_remove_all(!!sequence_col, "-")) |>
+    # Trim leading and trailing "N"s from sequences that contain them
+    mutate(!!sequence_col := str_remove(!!sequence_col, "N+"))
+  ending_count <- nrow(data)
+  avg_length_after <- mean(nchar(as.character(data[[quo_name(sequence_col)]])), na.rm = TRUE)
+  #cat("Gaps_removed: ", gaps_removed, "\n")
+  cat("Number of NAs removed: ", starting_count - ending_count, "\n")
+  cat("Number of Ns removed from sequences: ", N_freq, "\n")
+  cat("Number of gaps removed from sequences: ", gap_freq, "\n")
+  cat("Average sequence length before: ", avg_length_before, "\n")
+  cat("Average sequence length after: ", avg_length_after, "\n")
+  return(data)
+}
+###################
+
+# Using new function for COI_DF and ND_DF
+COI_DF <- filter_sequences(COI_DF, COI_Sequence)
+ND_DF <- filter_sequences(ND_DF, ND_Sequence)
+
+#Data is now modified and verified as not having gaps or missing nucleotides for downstream analysis.
 ## Analysis
-
-``` r
 COI_DF$COI_Sequence <- DNAStringSet(COI_DF$COI_Sequence)
 names(COI_DF$COI_Sequence) <- COI_DF$COI_Title 
 #ensure the column labels are conserved
@@ -113,35 +133,30 @@ dnaBin.ND <- as.DNAbin(ND.alignment)
 #modify alignment for distance matrix
 distanceMatrix.ND <- dist.dna(dnaBin.ND, model = "TN93", as.matrix = TRUE, pairwise.deletion = TRUE) 
 #generate a distance matrix from the alignment
-clusters.ND <- hclust(as.dist(distanceMatrix.ND), method = "single") 
-#clustering of the segments
+clusters.ND <- hclust(as.dist(distanceMatrix.ND), method = "single")
 
+#clustering of the segments
 #cluster analysis was chosen over kmer as even with most robust search terms, 
 #sequence numbers were lower (less than 1000 individuals per gene)
-```
 
-``` r
 COI_dend <- as.dendrogram(clusters.COI) |>
-dendextend::set("labels_cex", 0.3)
+  dendextend::set("labels_cex", 0.3)
 ND_dend <- as.dendrogram(clusters.ND) |>
-dendextend::set("labels_cex", 0.3)
+  dendextend::set("labels_cex", 0.3)
 par(mar = c(3,3,1,1))
 nf <- layout(matrix(c(1,2), nrow=2))
 COI_dend |>
   set("branches_k_color") |>
-  plot(main = "Dendrogram of COI gene in Apis", ylim = c(0,0.05))
+  plot(main = "Fig.1a - Dendrogram of COI gene in Apis", ylim = c(0,0.05))
 ND_dend |>
   set("branches_k_color") |>
-  plot(main = "Dendrogram of ND1 gene in Apis", ylim = c(0,0.05)) 
+  plot(main = "Fig.1b - Dendrogram of ND1 gene in Apis", ylim = c(0,0.05)) 
+
 #generate dendogram plots of both cluster analyses, cutting the y axis
 #to 0.05 to be able to see the clustering better, one cluster on both 
 #had a massive height and made it impossible to see any separation of 
 #the lower clusters
-```
 
-![Dendrogram Results for Cluster Analysis of COI and ND1 genes in Apis species.](Figure 1 Dendrogram.pdf)
-
-``` r
 COI.cut.2 <- cutree(clusters.COI, 2)
 COI.cut.3 <- cutree(clusters.COI, 3) #cut clustering data into 2 and 3 groupings, respectively
 COI.sil.2 <- silhouette(COI.cut.2, dist(distanceMatrix.COI))
@@ -152,45 +167,70 @@ ND.sil.2 <- silhouette(ND.cut.2, dist(distanceMatrix.ND))
 ND.sil.3 <- silhouette(ND.cut.3, dist(distanceMatrix.ND)) #run sil analysis on each set
 
 COI_sil_2_plot <- fviz_silhouette(COI.sil.2) +
-     ggtitle("COI Clustering with 2 Groupings") +
-     labs(y = "Silhouette Width", x = "Cluster Sequence") +
-     theme_minimal() +
-     theme(axis.text.x = element_text(size = 2))
+  ggtitle("COI Clustering with 2 Groupings") +
+  labs(y = "Silhouette Width", x = "Cluster Sequence") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 2))
 COI_sil_3_plot <- fviz_silhouette(COI.sil.3) +
-    ggtitle("COI Clustering with 3 Groupings") +
-    labs(y = "Silhouette Width", x = "Cluster Sequence") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(size = 2))
+  ggtitle("COI Clustering with 3 Groupings") +
+  labs(y = "Silhouette Width", x = "Cluster Sequence") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 2))
 COI_combined_plots <- plot_grid(COI_sil_2_plot, COI_sil_3_plot, ncol = 2, align = "h")
 print(COI_combined_plots)
 
 ND_sil_2_plot <- fviz_silhouette(ND.sil.2) +
-    ggtitle("ND1 Clustering with 2 Groupings") +
-    labs(y = "Silhouette Width", x = "Cluster Sequence") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(size = 3))
+  ggtitle("ND1 Clustering with 2 Groupings") +
+  labs(y = "Silhouette Width", x = "Cluster Sequence") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 3))
 ND_sil_3_plot <- fviz_silhouette(ND.sil.3) +
-    ggtitle("ND1 Clustering with 3 Groupings") +
-    labs(y = "Silhouette Width", x = "Cluster Sequence") +
-    theme_minimal() +
-    theme(axis.text.x = element_text(size = 3))
+  ggtitle("ND1 Clustering with 3 Groupings") +
+  labs(y = "Silhouette Width", x = "Cluster Sequence") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 3))
 ND_combined_plots <- plot_grid(ND_sil_2_plot, ND_sil_3_plot, ncol = 2, align = "h")
 print(ND_combined_plots)
+
 #visualize silhouette analysis for each of the groupings, divided by starting gene.
-```
 
-![Silhouette plots of clustering data for COI gene using 2 and 3 cluster groupings for sample analysis.](Figure 2 Silhouette Index COI.pdf)
+#The silhouette plots (Figure 2 and 3) show consistently that the clustering into 2 groupings has a higher strength than the 3 groupings - both sit close to exactly 1.0 cluster strength with 2 groupings while the 3 groupings vary much more. With COI, the largest cluster group drops in strength from 0.98 to an average of 0.62. In the ND1 analysis, the 2 grouping cluster shows similar trends to the COI, with the majority of samples sitting close to 1.0 (0.95 and 0.91). Where ND1 varies is the 3 grouping cluster. The largest group is still close to 1.0 (0.95) but the second group shows a significant difference with an average of 0.51 but some sequences falling below 0 into the negatives. In addition, the third grouping is incredibly small, consisting of a single sequence, and sits at a cluster score of 0.
 
-![Silhouette plots of clustering data for ND1 gene using 2 and 3 cluster groupings for sample analysis.](Figure 3 Silhouette Index ND.pdf)
+####### Dylan edit -- ADDED STATISTICAL TESTING ##########
+# Although the difference in silhouette widths between the 2 and 3 cluster groupings is visually well demonstrated, I've added a statistical test to support the change in silhouette widths for both COI and ND
 
-The silhouette plots (Figure 2 and 3) show consistently that the clustering into 2 groupings has a higher strength than the 3 groupings - both sit close to exactly 1.0 cluster strength with 2 groupings while the 3 groupings vary much more. With COI, the largest cluster group drops in strength from 0.98 to an average of 0.62. In the ND1 analysis, the 2 grouping cluster shows similar trends to the COI, with the majority of samples sitting close to 1.0 (0.95 and 0.91). Where ND1 varies is the 3 grouping cluster. The largest group is still close to 1.0 (0.95) but the second group shows a significant difference with an average of 0.51 but some sequences falling below 0 into the negatives. In addition, the third grouping is incredibly small, consisting of a single sequence, and sits at a cluster score of 0.
+# Extracting silhouette width values for COI
+COI_sil_2_width_values <- COI.sil.2[, "sil_width"]
+COI_sil_3_width_values <- COI.sil.3[, "sil_width"]
 
-``` r
+# Checking to see if the data is normal
+COI_diff <- COI_sil_2_width_values - COI_sil_3_width_values
+shapiro_test_COI <- shapiro.test(COI_diff)
+print(shapiro_test_COI) #Shapiro-Wilk normality test p-value = 1.723e-08
+
+# As the data is NOT normally distributed, we will use the Wilcox test
+wilcox_test_COI <- wilcox.test(COI_sil_2_width_values, COI_sil_3_width_values, paired = TRUE)
+print(wilcox_test_COI) # p-value <<< 0.05. changes in width very significant
+
+# Now we will repeat the same steps for ND
+ND_sil_2_width_values <- ND.sil.2[, "sil_width"]
+ND_sil_3_width_values <- ND.sil.3[, "sil_width"]
+
+ND_diff <- ND_sil_2_width_values - ND_sil_3_width_values
+shapiro_test_ND <- shapiro.test(ND_diff)
+print(shapiro_test_ND) #Shapiro-Wilk normality test p-value = 2.2e-16
+
+wilcox_test_ND <- wilcox.test(ND_sil_2_width_values, ND_sil_3_width_values, paired = TRUE)
+print(wilcox_test_ND) # p-value <<< 0.05. changes in width very significant
+
+######################
+
 COI_Dunn2 <- dunn(distanceMatrix.COI, COI.cut.2)
 COI_Dunn3 <- dunn(distanceMatrix.COI, COI.cut.3)
 ND_Dunn2 <- dunn(distanceMatrix.ND, ND.cut.2)
 ND_Dunn3 <- dunn(distanceMatrix.ND, ND.cut.3)
 #run Dunn analysis on usable data that was cut in previous set for sil analysis
+
 Dunn_Results <- data.frame(
   Dataset = c("COI", "COI", "ND1", "ND1"),
   k = c(2, 3, 2, 3),
@@ -198,15 +238,70 @@ Dunn_Results <- data.frame(
 ) #create dataframe for visualizing results
 ggplot(Dunn_Results, aes(x = factor(k), y = DunnIndex, fill = Dataset)) +
   geom_bar(stat = "identity", position = "dodge") +
-  labs(title = "Dunn Index Results for COI and ND1 Clustering in Apis Species",
+  labs(title = "Fig 4. Dunn Index Results for COI and ND1 Clustering in Apis Species",
        x = "Number of Groupings",
        y = "Dunn Index Result") +
   theme_minimal() #comparison visualization of the results in a bar chart
+
+#The bar graph (Figure 4) demonstrates that the 2 grouping clusters for COI and ND1 both have a higher Dunn Index (14.4 and 2.72, respectively) than the 3 grouping clusters (0.816 and 0.975, respectively). These show a much stronger clustering distinction and relation between sequences at the 2 group stage than the 3.
+
+####### Dylan edit -- PCA PLOT FOR ADDITIONAL VISUAL ANALYSIS ##########
+# The silhouette plot provided us with a visual demonstration of clustering quality, however PCA plots can give us more information on data variability and structure
+
+# Apply PCA on distance matrices for COI and ND
+pca_COI <- prcomp(as.matrix(distanceMatrix.COI))
+pca_ND <- prcomp(as.matrix(distanceMatrix.ND))
+
+# Extract the first two principal components (PC1, PC2) for each condition
+# 2 cluster groupings
+pca_COI_2_df <- data.frame(PC1 = pca_COI$x[,1], PC2 = pca_COI$x[,2], Cluster = factor(COI.cut.2)) 
+pca_ND_2_df <- data.frame(PC1 = pca_ND$x[,1], PC2 = pca_ND$x[,2], Cluster = factor(ND.cut.2))
+# 3 cluster groupings
+pca_COI_3_df <- data.frame(PC1 = pca_COI$x[,1], PC2 = pca_COI$x[,2], Cluster = factor(COI.cut.3))
+pca_ND_3_df <- data.frame(PC1 = pca_ND$x[,1], PC2 = pca_ND$x[,2], Cluster = factor(ND.cut.3))
+
+#Plotting PCAs individually, before combining
+pca_COI_2_plot <- ggplot(pca_COI_2_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "PCA for COI Gene Clustering (2 Groups)",
+       x = "PC1",
+       y = "PC2") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, hjust = 0.5))
+
+pca_ND_2_plot <- ggplot(pca_ND_2_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "PCA for ND1 Gene Clustering (2 Groups)",
+       x = "PC1",
+       y = "PC2") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, hjust = 0.5))
+
+pca_COI_3_plot <- ggplot(pca_COI_3_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "PCA for COI Gene Clustering (3 Groups)",
+       x = "PC1",
+       y = "PC2") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, hjust = 0.5))
+
+pca_ND_3_plot <- ggplot(pca_ND_3_df, aes(x = PC1, y = PC2, color = Cluster)) +
+  geom_point(size = 3) +
+  labs(title = "PCA for ND1 Gene Clustering (3 Groups)",
+       x = "PC1",
+       y = "PC2") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 11, hjust = 0.5))
+
+# Combining all plots and printing
+combined_plot <- plot_grid(pca_COI_2_plot, pca_ND_2_plot, pca_COI_3_plot, pca_ND_3_plot, ncol = 2)
+
+print(combined_plot)
+
+# Importantly for each case, data is separated into 2 distinct groups along the X-axis (PC1). Any additional separation in the 3 cluster grouping conditions occurs through variation in the Y-axis (PC2). This helps support the evidence that 2  cluster grouping is optimal.
+
+############################
 ```
-
-![Bar graph of Dunn Index results for COI and ND1 clustering analysis at 2 and 3 cluster groupings.](Figure 4 Dunn Index.pdf)
-
-The bar graph (Figure 4) demonstrates that the 2 grouping clusters for COI and ND1 both have a higher Dunn Index (14.4 and 2.72, respectively) than the 3 grouping clusters (0.816 and 0.975, respectively). These show a much stronger clustering distinction and relation between sequences at the 2 group stage than the 3.
 
 ## Discussion and Conclusion
 
@@ -237,3 +332,4 @@ Ilyasov, R. A., Han, G. Y., Lee, M. L., Kim, K. W., Park, J. H., Takahashi, J. I
 Ratnasingham, S., & Hebert, P. D. N. (2007). BOLD: The Barcode of Life Data System: Barcoding. *Molecular Ecology Notes*, *7*(3), 355–364. <https://doi.org/10.1111/j.1471-8286.2007.01678.x>
 
 Requier, F., Pérez-Méndez, N., Andersson, G. K. S., Blareau, E., Merle, I., & Garibaldi, L. A. (2023). Bee and non-bee pollinator importance for local food security. In *Trends in Ecology and Evolution* (Vol. 38, Issue 2, pp. 196–205). Elsevier Ltd. <https://doi.org/10.1016/j.tree.2022.10.006>
+  
